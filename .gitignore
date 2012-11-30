@@ -7,7 +7,7 @@ lib-cov
 *.pid
 *.gz
 
-*.dict
+*.dict/
 
 pids
 logs
