@@ -2,6 +2,8 @@
 // (c) 2012 Nacho Lopez 
 
 var net = require("net");
+var fs = require("fs");
+var alfred = require("alfred");
 var HOST = "127.0.0.1";
 var PORT = 26108;
 var HANDSHAKE = "mrmr0x";
@@ -46,8 +48,37 @@ var server = net.createServer(function(socket) {
 			// Dicts
 			// Devuelve un listado de diccionarios. La última línea es un punto.
 			if (data.indexOf("dicts") === 0) {
-				// TODO: listado de diccionarios real
-				socket.write(".\n");
+				fs.readdir("*.dict", function (err, files){
+					for (var d in files) {
+						socket.write(d.replace(".dict",""));
+					}
+					socket.write(".\n");
+				});
+			}
+			
+			// DictCreate
+			// Crea un nuevo diccionario (nueva base de datos)
+			if (data.indexOf("dictcreate ") === 0) {
+				var dictName = data.replace("dictcreate ","").replace("\n","").replace("\r","")+".dict";
+				if (fs.existsSync(dictName)) {
+					socket.write("That database already exists, skipping!\n");
+				} else {
+					console.log("Trying to create a new database: "+dictName);
+					alfred.open("./"+dictName, function(err, db) {
+						if (err) { throw(err); }
+						var terminology = db.define("terminology");
+						terminology.property("key","string", {
+							required: true
+						});
+						terminology.property("value","string", {
+							required: true
+						});
+						terminology.index("key", function(term){
+							return term.key;
+						});
+						terminology.new({"key":"A key", "value":"This is an example value for a recently created dictionary!"});
+					});
+				}
 			}
 			
 			// Quit
