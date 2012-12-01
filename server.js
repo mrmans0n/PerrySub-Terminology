@@ -3,7 +3,9 @@
 
 var net = require("net");
 var fs = require("fs");
-var alfred = require("alfred");
+var nStore = require("nstore");
+nStore = nStore.extend(require('nstore/query')());
+var db_path = "data/";
 var HOST = "127.0.0.1";
 var PORT = 26108;
 var HANDSHAKE = "mrmr0x";
@@ -39,6 +41,9 @@ var server = net.createServer(function(socket) {
 				socket.write("Welcome to "+server.name+" PerrySub terminology server.\n");		
 				waitingHandshake = false;		
 				socket.write("Waiting for commands... \n");
+				if (!fs.existsSync(db_path)) {
+					fs.mkdirSync(db_path);
+				}
 			}
 		} else {
 			
@@ -48,43 +53,31 @@ var server = net.createServer(function(socket) {
 			// Dicts
 			// Devuelve un listado de diccionarios. La última línea es un punto.
 			if (data.indexOf("dicts") === 0) {
-				fs.readdir("*.dict", function (err, files){
-					for (var d in files) {
-						socket.write(d.replace(".dict",""));
-					}
-					socket.write(".\n");
-				});
+				var files = fs.readdirSync(db_path);
+				for (var d in files) {
+					socket.write(d.replace(".dict","")+"\n");
+				}
+				socket.write(".\n");
 			}
 			
 			// DictCreate
 			// Crea un nuevo diccionario (nueva base de datos)
 			if (data.indexOf("dictcreate ") === 0) {
 				var dictName = data.replace("dictcreate ","").replace("\n","").replace("\r","")+".dict";
-				if (fs.existsSync(dictName)) {
+				if (fs.existsSync(db_path+dictName)) {
 					socket.write("That database already exists, skipping!\n");
 				} else {
 					console.log("Trying to create a new database: "+dictName);
-					fs.mkdirSync(dictName);
-					alfred.open(dictName, function(err, db) {
-						if (err) { return; }
-						var terminology = db.define("terminology");
-						terminology.property("key","string", {
-							required: true
-						});
-						terminology.property("value","string", {
-							required: true
-						});
-						terminology.index("key", function(term){
-							return term.key;
-						});
-						var term = terminology.new({"key":"A key", "value":"This is an example value for a recently created dictionary!"});
-						term.save(function(error) {
-							if (error) {
-								console.log("Database was created but couldn't save data!\n");
+
+					var terminology = nStore.new(db_path+dictName, function() {
+						terminology.save("A key",{value:"An example value"}, function (err) {
+							if (err) {
+								console.log("Error saving database "+dictName);
 							} else {
-								console.log("Database created!\n");
+								console.log("Database created!");							
 							}
 						});
+						
 					});
 				}
 			}
@@ -92,21 +85,22 @@ var server = net.createServer(function(socket) {
 			// DictList
 			// Lista los terminos que hay en una base de datos
 			if (data.indexOf("dictlist ") === 0) {
-				var dictName = data.replace("dictlist ","").replace("\n","").replace("\r","")+".dict";
+				var dictName = db_path+data.replace("dictlist ","").replace("\n","").replace("\r","")+".dict";
 				console.log("Accessing (at least trying to) database: "+dictName);
+				
+				var terminology = nStore.new(db_path+dictName, function() {
+					terminology.all(function(err,results){
+						if (err) { 
+							console.log("Error accessing database");
+							return;
+						}
 					
-				alfred.open(dictName, function(err, db) {
-					if (err) { console.log(err); return; }
-						
-					var terminology = db.define("terminology");
-						
-					terminology.find({"key":{$neq : ""}}).all(function(terms) {
-						for (var t in terms) {
-							socket.write(t.key+"\n");							
+						for (var r in results) {
+							socket.write(r.value+"\n");
 						}
 						socket.write(".\n");
-						db.close(function(err){});
-					});
+					});			
+					
 				});
 			}
 			
