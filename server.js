@@ -53,9 +53,13 @@ var server = net.createServer(function(socket) {
 			// Dicts
 			// Devuelve un listado de diccionarios. La última línea es un punto.
 			if (data.indexOf("dicts") === 0) {
-				var files = fs.readdirSync(db_path);
-				for (var d in files) {
-					socket.write(d.replace(".dict","")+"\n");
+				try {
+					var files = fs.readdirSync(db_path+"*.dict");
+					for (var d in files) {
+						socket.write(d.replace(".dict","")+"\n");
+					}					
+				} catch (err) {
+					console.log("Error: "+err);
 				}
 				socket.write(".\n");
 			}
