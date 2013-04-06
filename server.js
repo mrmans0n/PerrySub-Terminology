@@ -3,14 +3,14 @@
 
 var net = require("net");
 var fs = require("fs");
-var nStore = require("nstore");
-nStore = nStore.extend(require('nstore/query')());
-var db_path = "data/";
+var redis = require("redis");
 var HOST = "127.0.0.1";
 var PORT = 26108;
 var HANDSHAKE = "mrmr0x";
 
 var server = net.createServer(function(socket) {
+
+	var redisClient = redis.createClient();
 
 	socket.name = socket.remoteAddress + ":" + socket.remotePort
 	server.name = server.address().family+" "+server.address().address+":"+server.address().port;
@@ -41,9 +41,6 @@ var server = net.createServer(function(socket) {
 				socket.write("Welcome to "+server.name+" PerrySub terminology server.\n");		
 				waitingHandshake = false;		
 				socket.write("Waiting for commands... \n");
-				if (!fs.existsSync(db_path)) {
-					fs.mkdirSync(db_path);
-				}
 			}
 		} else {
 			
@@ -53,59 +50,85 @@ var server = net.createServer(function(socket) {
 			// Dicts
 			// Devuelve un listado de diccionarios. La última línea es un punto.
 			if (data.indexOf("dicts") === 0) {
-				try {
-					var files = fs.readdirSync(db_path+"*.dict");
-					for (var d in files) {
-						socket.write(d.replace(".dict","")+"\n");
-					}					
-				} catch (err) {
-					console.log("Error: "+err);
-				}
-				socket.write(".\n");
+				redisClient.get("perrysub_dicts", function(err, reply) {
+					console.log(reply);
+					if (reply != null) {
+						var dicts = JSON.parse(reply);
+						for (var i=0; i<dicts.length; i++) {
+							socket.write(dicts[i]+"\n");
+						}
+					}
+					socket.write(".\n");					
+				});
 			}
 			
 			// DictCreate
 			// Crea un nuevo diccionario (nueva base de datos)
 			if (data.indexOf("dictcreate ") === 0) {
-				var dictName = data.replace("dictcreate ","").replace("\n","").replace("\r","")+".dict";
-				if (fs.existsSync(db_path+dictName)) {
-					socket.write("That database already exists, skipping!\n");
-				} else {
-					console.log("Trying to create a new database: "+dictName);
-
-					var terminology = nStore.new(db_path+dictName, function() {
-						terminology.save("A key",{value:"An example value"}, function (err) {
-							if (err) {
-								console.log("Error saving database "+dictName);
-							} else {
-								console.log("Database created!");							
-							}
-						});
-						
-					});
-				}
+				var dictName = data.replace("dictcreate ","").replace("\n","").replace("\r","");
+				
+				redisClient.get("perrysub_dicts", function(err, reply) {
+					var dicts = new Array();
+					if (reply != null) {
+						dicts = JSON.parse(reply);
+					}
+					dicts.push(dictName);
+					redisClient.set("perrysub_dicts", JSON.stringify(dicts), redis.print);					
+				});
+				
 			}
 			
 			// DictList
 			// Lista los terminos que hay en una base de datos
 			if (data.indexOf("dictlist ") === 0) {
-				var dictName = db_path+data.replace("dictlist ","").replace("\n","").replace("\r","")+".dict";
+				var dictName = data.replace("dictlist ","").replace("\n","").replace("\r","");
 				console.log("Accessing (at least trying to) database: "+dictName);
 				
-				var terminology = nStore.new(db_path+dictName, function() {
-					terminology.all(function(err,results){
-						if (err) { 
-							console.log("Error accessing database");
-							return;
+				redisClient.get(dictName, function(err, reply) {
+					console.log(reply);
+					if (reply != null) {
+						var hash = JSON.parse(reply);
+						for (var i=0; i<dicts.length; i++) {
+							socket.write(dicts[i]+"\n");
 						}
-					
-						for (var r in results) {
-							socket.write(r.value+"\n");
-						}
-						socket.write(".\n");
-					});			
-					
+					}
+				});				
+			}
+			
+			// DictDel
+			// Elimina una base de datos
+			if (data.indexOf("dictdel ") === 0) {
+				var dictName = data.replace("dictdel ","").replace("\n","").replace("\r","");
+				console.log("Removing (at least trying to) database: "+dictName);
+				
+				redisClient.del(dictName, function(err) {
+					console.log("There was an error deleting "+dictName);
+					console.log(err);
 				});
+				
+				redisClient.get("perrysub_dicts", function(err, reply) {
+					if (reply != null) {
+						var dicts = JSON.parse(reply);
+						var newDicts = new Array();
+						for (var i=0; i<dicts.length; i++) {
+							if (dicts[i] != dictName) newDicts.push(dicts[i]);
+						}
+						console.log(newDicts);
+						redisClient.set("perrysub_dicts", JSON.stringify(newDicts), redis.print);
+					}
+				});
+			}
+			
+			// DictInsert
+			// Inserta un termino en una base de datos
+			if (data.indexOf("dictinsert ") === 0) {
+				// TODO
+			}
+			
+			// DictRemove
+			// Elimina un termino de una base de datos
+			if (data.indexOf("dictremove ") === 0) {
+				// TODO
 			}
 			
 			// Quit
@@ -119,6 +142,7 @@ var server = net.createServer(function(socket) {
 	
 	// Cuando finaliza el amor
 	socket.on("end", function() {
+		redisClient.quit();
 		console.log(socket.name+" disconnected");
 	});
 	
