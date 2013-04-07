@@ -1,16 +1,22 @@
 // Servidor PerrySub con node.js
-// (c) 2012 Nacho Lopez 
+// (c) 2012-2013 Nacho Lopez 
 
 var net = require("net");
 var fs = require("fs");
-var redis = require("redis");
+
+if (process.env.REDISTOGO_URL) {
+	var rtg   = require("url").parse(process.env.REDISTOGO_URL);
+	var redis = require("redis").createClient(rtg.port, rtg.hostname);
+	redis.auth(rtg.auth.split(":")[1]);	
+} else {
+	var redis = require("redis").createClient();	
+}
+
 var HOST = "127.0.0.1";
 var PORT = 26108;
 var HANDSHAKE = "mrmr0x";
 
 var server = net.createServer(function(socket) {
-
-	var redisClient = redis.createClient();
 
 	socket.name = socket.remoteAddress + ":" + socket.remotePort
 	server.name = server.address().family+" "+server.address().address+":"+server.address().port;
@@ -50,7 +56,7 @@ var server = net.createServer(function(socket) {
 			// Dicts
 			// Devuelve un listado de diccionarios. La última línea es un punto.
 			if (data.indexOf("dicts") === 0) {
-				redisClient.get("perrysub_dicts", function(err, reply) {
+				redis.get("perrysub_dicts", function(err, reply) {
 					console.log(reply);
 					if (reply != null) {
 						var dicts = JSON.parse(reply);
@@ -67,14 +73,14 @@ var server = net.createServer(function(socket) {
 			if (data.indexOf("dictcreate ") === 0) {
 				var dictName = data.replace("dictcreate ","").replace("\n","").replace("\r","");
 				
-				redisClient.get("perrysub_dicts", function(err, reply) {
+				redis.get("perrysub_dicts", function(err, reply) {
 					var dicts = new Array();
 					if (reply != null) {
 						dicts = JSON.parse(reply);
 					}
 					dicts.push(dictName);
-					redisClient.set("perrysub_dicts", JSON.stringify(dicts), redis.print);	
-					redisClient.set(dictName, JSON.stringify(new Object()), redis.print);				
+					redis.set("perrysub_dicts", JSON.stringify(dicts), redis.print);	
+					redis.set(dictName, JSON.stringify(new Object()), redis.print);				
 				});
 				
 			}
@@ -85,7 +91,7 @@ var server = net.createServer(function(socket) {
 				var dictName = data.replace("dictlist ","").replace("\n","").replace("\r","");
 				console.log("Accessing (at least trying to) database: "+dictName);
 				
-				redisClient.get(dictName, function(err, reply) {
+				redis.get(dictName, function(err, reply) {
 					console.log(reply);
 					if (reply != null) {
 						var hash = JSON.parse(reply);
@@ -102,12 +108,12 @@ var server = net.createServer(function(socket) {
 				var dictName = data.replace("dictdel ","").replace("\n","").replace("\r","");
 				console.log("Removing (at least trying to) database: "+dictName);
 				
-				redisClient.del(dictName, function(err) {
+				redis.del(dictName, function(err) {
 					console.log("There was an error deleting "+dictName);
 					console.log(err);
 				});
 				
-				redisClient.get("perrysub_dicts", function(err, reply) {
+				redis.get("perrysub_dicts", function(err, reply) {
 					if (reply != null) {
 						var dicts = JSON.parse(reply);
 						var newDicts = new Array();
@@ -115,7 +121,7 @@ var server = net.createServer(function(socket) {
 							if (dicts[i] != dictName) newDicts.push(dicts[i]);
 						}
 						console.log(newDicts);
-						redisClient.set("perrysub_dicts", JSON.stringify(newDicts), redis.print);
+						redis.set("perrysub_dicts", JSON.stringify(newDicts), redis.print);
 					}
 				});
 			}
@@ -136,13 +142,13 @@ var server = net.createServer(function(socket) {
 						
 						console.log("Accessing (at least trying to) database: "+dictName);
 				
-						redisClient.get(dictName, function(err, reply) {
+						redis.get(dictName, function(err, reply) {
 							console.log(reply);
 							if (reply != null) {
 								var hash = JSON.parse(reply);
 								if (hash==null) hash = new Object();
 								hash[key] = value;
-								redisClient.set(dictName, JSON.stringify(hash), redis.print);
+								redis.set(dictName, JSON.stringify(hash), redis.print);
 							}
 						});	
 					}
@@ -159,13 +165,13 @@ var server = net.createServer(function(socket) {
 					
 					console.log("Accessing (at least trying to) database: "+dictName);
 				
-					redisClient.get(dictName, function(err, reply) {
+					redis.get(dictName, function(err, reply) {
 						console.log(reply);
 						if (reply != null) {
 							var hash = JSON.parse(reply);
 							if (hash==null) hash = new Object();
 							delete hash[termName];
-							redisClient.set(dictName, JSON.stringify(hash), redis.print);
+							redis.set(dictName, JSON.stringify(hash), redis.print);
 						}
 					});	
 				} else {
@@ -184,7 +190,7 @@ var server = net.createServer(function(socket) {
 	
 	// Cuando finaliza el amor
 	socket.on("end", function() {
-		redisClient.quit();
+		redis.quit();
 		console.log(socket.name+" disconnected");
 	});
 	

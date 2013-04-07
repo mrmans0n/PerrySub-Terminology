@@ -1,0 +1,12 @@
+{
+  "name": "perrysub-terminology",
+  "version": "0.0.1",
+  "dependencies": {
+    "hiredis": "0.1.10",
+	"redis": "0.8.x"
+  },
+  "engines": {
+    "node": "0.8.x",
+    "npm": "1.1.x"
+  }
+}
