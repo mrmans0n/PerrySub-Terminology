@@ -73,7 +73,8 @@ var server = net.createServer(function(socket) {
 						dicts = JSON.parse(reply);
 					}
 					dicts.push(dictName);
-					redisClient.set("perrysub_dicts", JSON.stringify(dicts), redis.print);					
+					redisClient.set("perrysub_dicts", JSON.stringify(dicts), redis.print);	
+					redisClient.set(dictName, JSON.stringify(new Object()), redis.print);				
 				});
 				
 			}
@@ -88,8 +89,8 @@ var server = net.createServer(function(socket) {
 					console.log(reply);
 					if (reply != null) {
 						var hash = JSON.parse(reply);
-						for (var i=0; i<dicts.length; i++) {
-							socket.write(dicts[i]+"\n");
+						for (var key in hash) {
+							socket.write(key+":"+hash[key]+"\n");
 						}
 					}
 				});				
@@ -122,13 +123,54 @@ var server = net.createServer(function(socket) {
 			// DictInsert
 			// Inserta un termino en una base de datos
 			if (data.indexOf("dictinsert ") === 0) {
-				// TODO
+				var paramsArray = data.split(",");
+				if (paramsArray.length == 2) {
+					var dictName = paramsArray[0].replace("dictinsert ","").replace("\n","").replace("\r","");					
+					var keyValue = paramsArray[1].split(": ");
+					if (keyValue.length == 2) {
+						var key = keyValue[0].replace("\n","").replace("\r","");;
+						var value = keyValue[1].replace("\n","").replace("\r","");;
+						
+						console.log("key = "+key);
+						console.log("value = "+value);
+						
+						console.log("Accessing (at least trying to) database: "+dictName);
+				
+						redisClient.get(dictName, function(err, reply) {
+							console.log(reply);
+							if (reply != null) {
+								var hash = JSON.parse(reply);
+								if (hash==null) hash = new Object();
+								hash[key] = value;
+								redisClient.set(dictName, JSON.stringify(hash), redis.print);
+							}
+						});	
+					}
+				}
 			}
 			
 			// DictRemove
 			// Elimina un termino de una base de datos
 			if (data.indexOf("dictremove ") === 0) {
-				// TODO
+				var paramsArray = data.split(",");
+				if (paramsArray.length == 2) {
+					var dictName = paramsArray[0].replace("dictremove ","").replace("\n","").replace("\r","");					
+					var termName = paramsArray[1].replace("\n","").replace("\r","");
+					
+					console.log("Accessing (at least trying to) database: "+dictName);
+				
+					redisClient.get(dictName, function(err, reply) {
+						console.log(reply);
+						if (reply != null) {
+							var hash = JSON.parse(reply);
+							if (hash==null) hash = new Object();
+							delete hash[termName];
+							redisClient.set(dictName, JSON.stringify(hash), redis.print);
+						}
+					});	
+				} else {
+					console.log("You are doing it wrong: "+data);
+				}
 			}
 			
 			// Quit
